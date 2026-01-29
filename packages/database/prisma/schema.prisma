@@ -302,6 +302,7 @@ enum UserRole {
 }
 
 enum SubscriptionPlan {
+  TRIAL
   STARTER
   PRO
   ENTERPRISE
