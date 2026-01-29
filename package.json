@@ -1,0 +1,26 @@
+{
+  "name": "goldora",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "db:generate": "npm run generate --workspace=@goldora/database",
+    "db:migrate": "npm run migrate --workspace=@goldora/database",
+    "db:push": "npm run push --workspace=@goldora/database",
+    "db:seed": "npm run seed --workspace=@goldora/database"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.0",
+    "typescript": "^5.5.0"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "npm@10.0.0"
+}

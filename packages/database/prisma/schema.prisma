@@ -1,0 +1,335 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ──────────────────────────────────────────
+// Multi-tenant: Organization (Agence)
+// ──────────────────────────────────────────
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  address   String?
+  phone     String?
+  email     String?
+  siret     String?  @unique
+  logoUrl   String?
+
+  // Invoice settings
+  invoicePrefix  String  @default("FA")
+  invoiceCounter Int     @default(0)
+
+  // Subscription
+  subscriptionPlan   SubscriptionPlan   @default(TRIAL)
+  subscriptionStatus SubscriptionStatus @default(TRIAL)
+  stripeCustomerId   String?            @unique
+  stripeSubscriptionId String?          @unique
+  trialEndsAt        DateTime?
+  maxUsers           Int                @default(2)
+  maxTransactionsPerMonth Int           @default(100)
+
+  // Margins per metal (JSON: { "GOLD": 5.0, "SILVER": 8.0, ... })
+  metalMargins Json @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users        User[]
+  customers    Customer[]
+  transactions Transaction[]
+  auditLogs    AuditLog[]
+  settings     OrganizationSettings?
+
+  @@map("organizations")
+}
+
+model OrganizationSettings {
+  id             String @id @default(cuid())
+  organizationId String @unique
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  // Invoice template customization (JSON)
+  invoiceTemplate Json @default("{}")
+
+  // Default currency
+  currency String @default("EUR")
+
+  // Timezone
+  timezone String @default("Europe/Paris")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("organization_settings")
+}
+
+// ──────────────────────────────────────────
+// Users
+// ──────────────────────────────────────────
+
+model User {
+  id             String   @id @default(cuid())
+  email          String   @unique
+  passwordHash   String
+  firstName      String
+  lastName       String
+  role           UserRole @default(SELLER)
+  isActive       Boolean  @default(true)
+
+  // 2FA
+  twoFactorEnabled Boolean @default(false)
+  twoFactorSecret  String?
+
+  // Lockout
+  failedLoginAttempts Int      @default(0)
+  lockedUntil         DateTime?
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  transactions Transaction[]
+  auditLogs    AuditLog[]
+  sessions     Session[]
+
+  @@index([organizationId])
+  @@map("users")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expires      DateTime
+  ipAddress    String?
+  userAgent    String?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+// ──────────────────────────────────────────
+// Customers (sellers of precious metals)
+// ──────────────────────────────────────────
+
+model Customer {
+  id          String  @id @default(cuid())
+  firstName   String
+  lastName    String
+  dateOfBirth DateTime?
+  birthPlace  String?
+  nationality String?
+  address     String?
+  city        String?
+  postalCode  String?
+  country     String  @default("FR")
+  phone       String?
+  email       String?
+
+  // Banking
+  iban        String?
+  bic         String?
+
+  // RGPD
+  consentGiven    Boolean  @default(false)
+  consentDate     DateTime?
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  identityDocuments IdentityDocument[]
+  transactions      Transaction[]
+
+  @@index([organizationId])
+  @@index([lastName, firstName])
+  @@map("customers")
+}
+
+model IdentityDocument {
+  id         String             @id @default(cuid())
+  customerId String
+  customer   Customer           @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  type           DocumentType
+  documentNumber String?
+  expiryDate     DateTime?
+  issuedDate     DateTime?
+  issuingCountry String?
+
+  // Encrypted file reference in S3
+  s3Key          String
+  encryptionIv   String   // AES-256 IV for this specific file
+  mimeType       String
+  fileSize       Int
+
+  // OCR extraction result (JSON)
+  ocrData        Json?
+
+  // Legal retention: auto-delete after 5 years
+  retentionUntil DateTime
+
+  createdAt DateTime @default(now())
+
+  @@index([customerId])
+  @@map("identity_documents")
+}
+
+// ──────────────────────────────────────────
+// Transactions
+// ──────────────────────────────────────────
+
+model Transaction {
+  id              String            @id @default(cuid())
+  invoiceNumber   String            @unique
+  status          TransactionStatus @default(DRAFT)
+  totalAmount     Decimal           @db.Decimal(12, 2)
+  currency        String            @default("EUR")
+  notes           String?
+
+  // Police register reference
+  policeRegisterNumber String?
+
+  // PDF invoice S3 key
+  invoiceS3Key    String?
+
+  customerId     String
+  customer       Customer     @relation(fields: [customerId], references: [id])
+
+  userId         String
+  user           User         @relation(fields: [userId], references: [id])
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items TransactionItem[]
+
+  @@index([organizationId])
+  @@index([customerId])
+  @@index([createdAt])
+  @@map("transactions")
+}
+
+model TransactionItem {
+  id            String    @id @default(cuid())
+  transactionId String
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  metalType     MetalType
+  weightGrams   Decimal   @db.Decimal(10, 3)
+  purity        String    // e.g. "18K", "750", "999"
+  purityFactor  Decimal   @db.Decimal(5, 4) // 0.7500 for 18K
+  description   String?
+
+  // Price calculation
+  spotPricePerGram Decimal @db.Decimal(10, 4) // Market price at time of transaction
+  marginPercent    Decimal @db.Decimal(5, 2)
+  unitPrice        Decimal @db.Decimal(12, 4) // Price per gram after margin
+  totalPrice       Decimal @db.Decimal(12, 2)
+
+  createdAt DateTime @default(now())
+
+  @@index([transactionId])
+  @@map("transaction_items")
+}
+
+// ──────────────────────────────────────────
+// Metal Prices (global, not tenant-scoped)
+// ──────────────────────────────────────────
+
+model MetalPrice {
+  id        String    @id @default(cuid())
+  metalType MetalType
+  pricePerGram Decimal @db.Decimal(10, 4)
+  currency  String    @default("EUR")
+  source    String    // API source
+  fetchedAt DateTime  @default(now())
+
+  @@index([metalType, fetchedAt])
+  @@map("metal_prices")
+}
+
+// ──────────────────────────────────────────
+// Audit Log (immutable, append-only)
+// ──────────────────────────────────────────
+
+model AuditLog {
+  id             String   @id @default(cuid())
+  action         String   // e.g. "TRANSACTION_CREATED", "CUSTOMER_UPDATED"
+  entityType     String   // e.g. "Transaction", "Customer"
+  entityId       String?
+  details        Json?    // Additional context
+  ipAddress      String?
+  userAgent      String?
+
+  userId         String?
+  user           User?    @relation(fields: [userId], references: [id])
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}
+
+// ──────────────────────────────────────────
+// Enums
+// ──────────────────────────────────────────
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  SELLER
+}
+
+enum SubscriptionPlan {
+  STARTER
+  PRO
+  ENTERPRISE
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  SUSPENDED
+  CANCELLED
+}
+
+enum DocumentType {
+  NATIONAL_ID
+  PASSPORT
+  RESIDENCE_PERMIT
+  DRIVING_LICENSE
+}
+
+enum TransactionStatus {
+  DRAFT
+  COMPLETED
+  CANCELLED
+}
+
+enum MetalType {
+  GOLD
+  SILVER
+  PLATINUM
+  PALLADIUM
+}
