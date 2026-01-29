@@ -30,6 +30,22 @@ async function main() {
     },
   });
 
+  // Create super admin (password: SuperAdmin123!)
+  const superAdminHash = await bcrypt.hash('SuperAdmin123!', 12);
+
+  await prisma.user.upsert({
+    where: { email: 'superadmin@goldora.fr' },
+    update: { passwordHash: superAdminHash },
+    create: {
+      email: 'superadmin@goldora.fr',
+      passwordHash: superAdminHash,
+      firstName: 'Admin',
+      lastName: 'GoldOra',
+      role: UserRole.SUPER_ADMIN,
+      organizationId: org.id,
+    },
+  });
+
   // Create admin user (password: Admin123!)
   const adminHash = await bcrypt.hash('Admin123!', 12);
 
@@ -63,6 +79,7 @@ async function main() {
   });
 
   console.log('Seed completed.');
+  console.log('Super Admin: superadmin@goldora.fr / SuperAdmin123!');
   console.log('Admin: admin@emporrium.fr / Admin123!');
   console.log('Vendeur: vendeur@emporrium.fr / Seller123!');
 }
