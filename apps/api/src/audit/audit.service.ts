@@ -5,7 +5,7 @@ interface AuditLogEntry {
   action: string;
   entityType: string;
   entityId?: string;
-  details?: Record<string, unknown>;
+  details?: Record<string, any>;
   ipAddress?: string;
   userAgent?: string;
   userId?: string;

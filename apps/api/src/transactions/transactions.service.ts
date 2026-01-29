@@ -72,7 +72,7 @@ export class TransactionsService {
         throw new BadRequestException(`Pureté invalide: ${item.purity} pour ${item.metalType}`);
       }
 
-      const priceInfo = prices.find((p) => p.metalType === item.metalType);
+      const priceInfo = prices.find((p) => p!.metalType === item.metalType);
       if (!priceInfo) {
         throw new BadRequestException(`Prix indisponible pour ${item.metalType}`);
       }
