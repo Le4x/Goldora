@@ -1,5 +1,5 @@
 import { PrismaClient, UserRole, SubscriptionPlan, SubscriptionStatus } from '../generated/client';
-import * as crypto from 'crypto';
+import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
 
@@ -31,14 +31,14 @@ async function main() {
   });
 
   // Create admin user (password: Admin123!)
-  const passwordHash = crypto.createHash('sha256').update('Admin123!').digest('hex');
+  const adminHash = await bcrypt.hash('Admin123!', 12);
 
   await prisma.user.upsert({
     where: { email: 'admin@emporrium.fr' },
-    update: {},
+    update: { passwordHash: adminHash },
     create: {
       email: 'admin@emporrium.fr',
-      passwordHash,
+      passwordHash: adminHash,
       firstName: 'Jean',
       lastName: 'Dupont',
       role: UserRole.ADMIN,
@@ -47,11 +47,11 @@ async function main() {
   });
 
   // Create seller user (password: Seller123!)
-  const sellerHash = crypto.createHash('sha256').update('Seller123!').digest('hex');
+  const sellerHash = await bcrypt.hash('Seller123!', 12);
 
   await prisma.user.upsert({
     where: { email: 'vendeur@emporrium.fr' },
-    update: {},
+    update: { passwordHash: sellerHash },
     create: {
       email: 'vendeur@emporrium.fr',
       passwordHash: sellerHash,
@@ -63,6 +63,8 @@ async function main() {
   });
 
   console.log('Seed completed.');
+  console.log('Admin: admin@emporrium.fr / Admin123!');
+  console.log('Vendeur: vendeur@emporrium.fr / Seller123!');
 }
 
 main()
